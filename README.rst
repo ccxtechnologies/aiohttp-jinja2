@@ -1,5 +1,11 @@
 aiohttp_jinja2
 ==============
+
+
+**This is a fork of `aio-libs/aiohttp-jinja2#154<https://github.com/aio-libs/aiohttp-jinja2/pull/154>`_ which adds support for calling asyncio coroutines from jinja scripts.**
+
+This feature is disabled by default, to enable it you must set enable_async=True when calling the setup function. This will set enable_async in the jinja2 Environment.
+
 .. image:: https://travis-ci.org/aio-libs/aiohttp-jinja2.svg?branch=master
     :target: https://travis-ci.org/aio-libs/aiohttp-jinja2
 .. image:: https://codecov.io/gh/aio-libs/aiohttp-jinja2/branch/master/graph/badge.svg
