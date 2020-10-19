@@ -8,11 +8,9 @@ from aiohttp import web
 from aiohttp.abc import AbstractView
 from .helpers import GLOBAL_HELPERS
 
-
-__version__ = '1.2.0'
+__version__ = '1.2.0.a'
 
 __all__ = ('setup', 'get_env', 'render_template', 'render_string', 'template')
-
 
 APP_CONTEXT_PROCESSORS_KEY = 'aiohttp_jinja2_context_processors'
 APP_KEY = 'aiohttp_jinja2_environment'
@@ -20,14 +18,15 @@ REQUEST_CONTEXT_KEY = 'aiohttp_jinja2_context'
 
 
 def setup(
-    app: web.Application,
-    *args: Any,
-    app_key: str = APP_KEY,
-    context_processors: Iterable[Callable[[web.Request], Dict[str, Any]]] = (),
-    filters: Optional[Iterable[Callable[..., str]]] = None,
-    default_helpers: bool = True,
-    enable_async: bool = True,
-    **kwargs: Any
+        app: web.Application,
+        *args: Any,
+        app_key: str = APP_KEY,
+        context_processors: Iterable[Callable[[web.Request], Dict[str,
+                                                                  Any]]] = (),
+        filters: Optional[Iterable[Callable[..., str]]] = None,
+        default_helpers: bool = True,
+        enable_async: bool = True,
+        **kwargs: Any
 ) -> jinja2.Environment:
     kwargs.setdefault("autoescape", True)
     env = jinja2.Environment(*args, enable_async=enable_async, **kwargs)
@@ -46,25 +45,25 @@ def setup(
 
 
 def get_env(
-    app: web.Application,
-    *,
-    app_key: str = APP_KEY
+        app: web.Application, *, app_key: str = APP_KEY
 ) -> jinja2.Environment:
     return cast(jinja2.Environment, app.get(app_key))
 
 
 def render_string(
-    template_name: str,
-    request: web.Request,
-    context: Dict[str, Any],
-    *,
-    app_key: str = APP_KEY
+        template_name: str,
+        request: web.Request,
+        context: Dict[str, Any],
+        *,
+        app_key: str = APP_KEY
 ) -> str:
     env = request.config_dict.get(app_key)
     if env is None:
-        text = ("Template engine is not initialized, "
+        text = (
+                "Template engine is not initialized, "
                 "call aiohttp_jinja2.setup(..., app_key={}) first"
-                "".format(app_key))
+                "".format(app_key)
+        )
         # in order to see meaningful exception message both: on console
         # output and rendered page we add same message to *reason* and
         # *text* arguments.
@@ -88,13 +87,21 @@ def render_string(
 
 
 @asyncio.coroutine
-def render_template(template_name, request, context, *,
-                    app_key=APP_KEY, encoding='utf-8', status=200):
+def render_template(
+        template_name,
+        request,
+        context,
+        *,
+        app_key=APP_KEY,
+        encoding='utf-8',
+        status=200
+):
     response = web.Response(status=status)
     if context is None:
         context = {}
-    text = yield from render_string(template_name, request, context,
-                                    app_key=app_key)
+    text = yield from render_string(
+            template_name, request, context, app_key=app_key
+    )
     response.content_type = 'text/html'
     response.charset = encoding
     response.text = text
@@ -102,23 +109,24 @@ def render_template(template_name, request, context, *,
 
 
 def template(
-    template_name: str,
-    *,
-    app_key: str = APP_KEY,
-    encoding: str = 'utf-8',
-    status: int = 200
+        template_name: str,
+        *,
+        app_key: str = APP_KEY,
+        encoding: str = 'utf-8',
+        status: int = 200
 ) -> Any:
-
     def wrapper(func: Any) -> Any:
         @functools.wraps(func)
         async def wrapped(*args: Any) -> web.StreamResponse:
             if asyncio.iscoroutinefunction(func):
                 coro = func
             else:
-                warnings.warn("Bare functions are deprecated, "
-                              "use async ones", DeprecationWarning)
+                warnings.warn(
+                        "Bare functions are deprecated, "
+                        "use async ones", DeprecationWarning
+                )
                 coro = asyncio.coroutine(func)
-            context = await coro(*args)
+            context = yield from coro(*args)
             if isinstance(context, web.StreamResponse):
                 return context
 
@@ -129,18 +137,24 @@ def template(
                 request = args[-1]
 
             response = yield from render_template(
-                template_name, request, context,
-                app_key=app_key, encoding=encoding)
+                    template_name,
+                    request,
+                    context,
+                    app_key=app_key,
+                    encoding=encoding
+            )
             response.set_status(status)
             return response
+
         return wrapped
+
     return wrapper
 
 
 @web.middleware
 async def context_processors_middleware(
-    request: web.Request,
-    handler: Callable[[web.Request], Awaitable[web.StreamResponse]]
+        request: web.Request, handler: Callable[[web.Request],
+                                                Awaitable[web.StreamResponse]]
 ) -> web.StreamResponse:
 
     if REQUEST_CONTEXT_KEY not in request:
