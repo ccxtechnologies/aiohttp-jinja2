@@ -1,11 +1,49 @@
 CHANGES
 =======
 
-0.15.0 (2017-xx-xx)
+1.2.0 (2019-10-21)
+------------------
+
+- Add type hints #285
+
+1.1.1 (2019-04-25)
+------------------
+
+- Bump minimal supported ``jinja2`` version to 2.10.1 to avoid security vulnerability problem.
+
+
+1.1.0 (2018-09-05)
+------------------
+
+- Bump minimal supported ``aiohttp`` version to 3.2
+
+- Use ``request.config_dict`` for accessing ``jinja2`` environment. It
+  allows to reuse jinja rendering engine from parent application.
+
+1.0.0 (2018-03-12)
 -------------------
 
+- Allow context_processors to compose from parent apps #195
+
+0.17.0 (2018-03-12)
+-------------------
+
+- Auto-cast ``int`` values in ``url()`` jinja function to ``str`` #191
+
+0.16.0 (2018-02-12)
+-------------------
+
+- Pin to aiohttp 3.0+
+
+- Deprecate non-async handlers support
+
+0.15.0 (2018-01-30)
+-------------------
 - Enable async support feature available in Jinja 2.9 #152
 
+- Upgrade middleware to new style from aiohttp 2.3+ #182
+
+- Autoescape all templates by default #179
 
 0.13.0 (2016-12-14)
 -------------------

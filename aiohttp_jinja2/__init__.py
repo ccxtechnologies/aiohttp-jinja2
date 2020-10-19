@@ -1,15 +1,17 @@
 import asyncio
 import functools
+import warnings
 import jinja2
-from collections import Mapping
+from collections.abc import Mapping
+from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, cast
 from aiohttp import web
 from aiohttp.abc import AbstractView
 from .helpers import GLOBAL_HELPERS
 
 
-__version__ = '0.15.0a0'
+__version__ = '1.2.0'
 
-__all__ = ('setup', 'get_env', 'render_template', 'template')
+__all__ = ('setup', 'get_env', 'render_template', 'render_string', 'template')
 
 
 APP_CONTEXT_PROCESSORS_KEY = 'aiohttp_jinja2_context_processors'
@@ -17,8 +19,17 @@ APP_KEY = 'aiohttp_jinja2_environment'
 REQUEST_CONTEXT_KEY = 'aiohttp_jinja2_context'
 
 
-def setup(app, *args, app_key=APP_KEY, context_processors=(),
-          filters=None, default_helpers=True, enable_async=True, **kwargs):
+def setup(
+    app: web.Application,
+    *args: Any,
+    app_key: str = APP_KEY,
+    context_processors: Iterable[Callable[[web.Request], Dict[str, Any]]] = (),
+    filters: Optional[Iterable[Callable[..., str]]] = None,
+    default_helpers: bool = True,
+    enable_async: bool = True,
+    **kwargs: Any
+) -> jinja2.Environment:
+    kwargs.setdefault("autoescape", True)
     env = jinja2.Environment(*args, enable_async=enable_async, **kwargs)
     if default_helpers:
         env.globals.update(GLOBAL_HELPERS)
@@ -34,13 +45,22 @@ def setup(app, *args, app_key=APP_KEY, context_processors=(),
     return env
 
 
-def get_env(app, *, app_key=APP_KEY):
-    return app.get(app_key)
+def get_env(
+    app: web.Application,
+    *,
+    app_key: str = APP_KEY
+) -> jinja2.Environment:
+    return cast(jinja2.Environment, app.get(app_key))
 
 
-@asyncio.coroutine
-def render_string(template_name, request, context, *, app_key=APP_KEY):
-    env = request.app.get(app_key)
+def render_string(
+    template_name: str,
+    request: web.Request,
+    context: Dict[str, Any],
+    *,
+    app_key: str = APP_KEY
+) -> str:
+    env = request.config_dict.get(app_key)
     if env is None:
         text = ("Template engine is not initialized, "
                 "call aiohttp_jinja2.setup(..., app_key={}) first"
@@ -81,17 +101,24 @@ def render_template(template_name, request, context, *,
     return response
 
 
-def template(template_name, *, app_key=APP_KEY, encoding='utf-8', status=200):
+def template(
+    template_name: str,
+    *,
+    app_key: str = APP_KEY,
+    encoding: str = 'utf-8',
+    status: int = 200
+) -> Any:
 
-    def wrapper(func):
-        @asyncio.coroutine
+    def wrapper(func: Any) -> Any:
         @functools.wraps(func)
-        def wrapped(*args):
+        async def wrapped(*args: Any) -> web.StreamResponse:
             if asyncio.iscoroutinefunction(func):
                 coro = func
             else:
+                warnings.warn("Bare functions are deprecated, "
+                              "use async ones", DeprecationWarning)
                 coro = asyncio.coroutine(func)
-            context = yield from coro(*args)
+            context = await coro(*args)
             if isinstance(context, web.StreamResponse):
                 return context
 
@@ -110,18 +137,18 @@ def template(template_name, *, app_key=APP_KEY, encoding='utf-8', status=200):
     return wrapper
 
 
-@asyncio.coroutine
-def context_processors_middleware(app, handler):
-    @asyncio.coroutine
-    def middleware(request):
+@web.middleware
+async def context_processors_middleware(
+    request: web.Request,
+    handler: Callable[[web.Request], Awaitable[web.StreamResponse]]
+) -> web.StreamResponse:
+
+    if REQUEST_CONTEXT_KEY not in request:
         request[REQUEST_CONTEXT_KEY] = {}
-        for processor in app[APP_CONTEXT_PROCESSORS_KEY]:
-            request[REQUEST_CONTEXT_KEY].update(
-                (yield from processor(request)))
-        return (yield from handler(request))
-    return middleware
+    for processor in request.config_dict[APP_CONTEXT_PROCESSORS_KEY]:
+        request[REQUEST_CONTEXT_KEY].update(await processor(request))
+    return await handler(request)
 
 
-@asyncio.coroutine
-def request_processor(request):
+async def request_processor(request: web.Request) -> Dict[str, web.Request]:
     return {'request': request}

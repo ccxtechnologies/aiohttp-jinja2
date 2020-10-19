@@ -45,10 +45,29 @@ On handler call the :func:`template` decorator will pass
 returned dictionary ``{'name': 'Andrew', 'surname': 'Svetlov'}`` into
 template named ``"tmpl.jinja2"`` for getting resulting HTML text.
 
-If you need more complex processing (set response headers for example)
-you may call :func:`render_template` function.
+More complex template processing can be achieved by modifying the existing
+`list of global functions <http://jinja.pocoo.org/docs/2.10/templates/#builtin-globals>`_.
+Modification of Jinja2's environment can be done via :func:`get_env`.
+For example, adding the ``zip`` function::
 
-Using a function based web handler::
+    env = aiohttp_jinja2.get_env(app)
+    env.globals.update(zip=zip)
+
+
+Which can now to be used in any template::
+
+    {% for value, square in zip(values, squares) %}
+        <p>The square of {{ value }} is {{ square }}.</p>
+    {% endfor %}
+
+
+In some cases, finer control over the dataflow may also be required.
+This can be worked out by explicitly asking for template to be rendered
+using :func:`render_template`.
+Explicit rendering will allow to possibly
+pass some context to the renderer
+and also to modify its response on the fly.
+This can for example be used to set response headers::
 
     async def handler(request):
         context = {'name': 'Andrew', 'surname': 'Svetlov'}
@@ -58,7 +77,7 @@ Using a function based web handler::
         response.headers['Content-Language'] = 'ru'
         return response
 
-Or, again, a class-based view (:class:`aiohttp.web.View`)::
+This, again, can also be done with a class-based view (:class:`aiohttp.web.View`)::
 
     class Handler(web.View):
         async def get(self):
@@ -97,6 +116,28 @@ As you can see, there is a built-in :func:`request_processor`, which
 adds current :class:`aiohttp.web.Request` into context of templates
 under ``'request'`` name.
 
+Here is an example of how to add current user dependant logic
+to template (requires ``aiohttp_security`` library)::
+
+    from aiohttp_security import authorized_userid
+
+    async def current_user_ctx_processor(request):
+        userid = await authorized_userid(request)
+        is_anonymous = not bool(userid)
+        return {'current_user': {'is_anonymous': is_anonymous}}
+
+Template::
+
+    <body>
+        <div>
+            {% if current_user.is_anonymous %}
+                <a href="{{ url('login') }}">Login</a>
+            {% else %}
+                <a href="{{ url('logout') }}">Logout</a>
+            {% endif %}
+        </div>
+    </body>
+
 Default Globals
 ...............
 
@@ -131,16 +172,19 @@ A query can be added to the url with the special ``query_`` keyword argument::
     </body>
 
 
-For a view defined by ``app.router.add_get('/user-profile/{id}/', user, name='user')``, the above would give::
+For a view defined by ``app.router.add_get('/user-profile/{id}/',
+user, name='user')``, the above would give::
 
     <body>
         <a href="/user-profile/123/?foo=bar">User Page</a>
     </body>
 
 
-This is useful as it would allow your static path to switch in deployment or testing with just one line.
+This is useful as it would allow your static path to switch in
+deployment or testing with just one line.
 
-The ``static`` function has similar usage, except it requires you to set ``static_root_url`` on the app
+The ``static`` function has similar usage, except it requires you to
+set ``static_root_url`` on the app
 
 .. code-block:: ruby
 
@@ -159,7 +203,8 @@ Would result in::
         <script src="/static/dist/main.js"></script>
 
 
-Both ``url`` and ``static`` can be disabled by passing ``default_helpers=False`` to ``aiohttp_jinja2.setup``.
+Both ``url`` and ``static`` can be disabled by passing
+``default_helpers=False`` to ``aiohttp_jinja2.setup``.
 
 Library Installation
 --------------------
@@ -177,7 +222,7 @@ Please feel free to file an issue on `bug tracker
 <https://github.com/aio-libs/aiohttp_jinja2/issues>`_ if you have found a bug
 or have some suggestion for library improvement.
 
-The library uses `Travis <https://travis-ci.org/aio-libs/aiohttp_jinja2>`_ for
+The library uses `Travis <https://travis-ci.org/aio-libs/aiohttp-jinja2>`_ for
 Continuous Integration.
 
 IRC channel
@@ -227,7 +272,7 @@ Reference
 
 
 .. function:: render_template(template_name, request, context, *, \
-                              app_key=APP_KEY, encoding='utf-8')
+                              app_key=APP_KEY, encoding='utf-8', status=200)
 
    Return :class:`aiohttp.web.Response` which contains template
    *template_name* filled with *context*.
@@ -243,7 +288,9 @@ Reference
    Returned response has *Content-Type* header set to ``'text/html'``.
 
 
-.. function:: setup(app, *args, app_key=APP_KEY, **kwargs)
+.. function:: setup(app, *args, app_key=APP_KEY, autoescape=True, \
+                    context_processors=(), filters=None, \
+                    deault_helpers=True, **kwargs)
 
    Initialize :class:`jinja2.Environment` object.
 
@@ -254,12 +301,17 @@ Reference
    *app_key* is an optional key for application dict, :const:`APP_KEY`
    by default.
 
-   The functions is roughly equivalent for::
+   *autoescape* is passed to :class:`jinja2.Environemnt`, see
+    `Autoescaping` for more details.
 
-      def setup(app, *args, app_key=APP_KEY, **kwargs):
-          env = jinja2.Environment(*args, **kwargs)
-          app[app_key] = env
-          return env
+   *context_processors* is a collection of context processors to be
+   called before rendering a template.
+
+   *filters* is a collection of custom filters, see
+   :ref:`writing-filters` for details.
+
+   *default_helpers* is a boolean flag, ``static_url`` and ``url``
+   jinja2 functions are added to environment if ``True`` (default).
 
 
 .. decorator:: template(template_name, *, app_key=APP_KEY, encoding='utf-8',\
@@ -303,8 +355,17 @@ Glossary
        An endpoint that returns http response.
 
 
+Contents
+--------
+
+.. toctree::
+   :maxdepth: 2
+
+   api
+
+
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`search`

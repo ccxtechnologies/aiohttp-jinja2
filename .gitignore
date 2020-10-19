@@ -55,3 +55,9 @@ target/
 
 coverage/
 .idea/
+.pytest_cache
+
+# code editors
+.vscode
+
+.mypy_cache

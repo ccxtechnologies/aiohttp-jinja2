@@ -1,20 +1,16 @@
-import asyncio
-
 import jinja2
 from aiohttp import web
 
 import aiohttp_jinja2
 
 
-@asyncio.coroutine
-def test_context_processors(test_client, loop):
+async def test_context_processors(aiohttp_client):
 
     @aiohttp_jinja2.template('tmpl.jinja2')
-    @asyncio.coroutine
-    def func(request):
+    async def func(request):
         return {'bar': 2}
 
-    app = web.Application(loop=loop, middlewares=[
+    app = web.Application(middlewares=[
             aiohttp_jinja2.context_processors_middleware])
     aiohttp_jinja2.setup(
         app,
@@ -25,94 +21,141 @@ def test_context_processors(test_client, loop):
         enable_async=True,
     )
 
+    async def processor(request):
+        return {'foo': 1,
+                'bar': 'should be overwriten'}
+
     app['aiohttp_jinja2_context_processors'] = (
         aiohttp_jinja2.request_processor,
-        asyncio.coroutine(
-            lambda request: {'foo': 1, 'bar': 'should be overwritten'}),
+        processor,
     )
 
     app.router.add_get('/', func)
 
-    client = yield from test_client(app)
+    client = await aiohttp_client(app)
 
-    resp = yield from client.get('/')
+    resp = await client.get('/')
     assert 200 == resp.status
-    txt = yield from resp.text()
+    txt = await resp.text()
     assert 'foo: 1, bar: 2, path: /' == txt
 
 
-@asyncio.coroutine
-def test_context_is_response(app_with_template, test_client):
+async def test_nested_context_processors(aiohttp_client):
 
     @aiohttp_jinja2.template('tmpl.jinja2')
-    def func(request):
-        return web.HTTPForbidden()
-
-    app = app_with_template("tmpl")
-
-    app.router.add_route('GET', '/', func)
-    client = yield from test_client(app)
-
-    resp = yield from client.get('/')
-    assert 403 == resp.status
-    yield from resp.release()
-
-
-@asyncio.coroutine
-def test_context_processors_new_setup_style(test_client, loop):
-
-    @aiohttp_jinja2.template('tmpl.jinja2')
-    @asyncio.coroutine
-    def func(request):
+    async def func(request):
         return {'bar': 2}
 
-    template = "foo: {{ foo }}, bar: {{ bar }}, path: {{ request.path }}"
-    ctx_coro = asyncio.coroutine(
-        lambda request: {'foo': 1, 'bar': 'should be overwritten'})
-    app = web.Application(loop=loop)
+    subapp = web.Application(middlewares=[
+            aiohttp_jinja2.context_processors_middleware])
+    aiohttp_jinja2.setup(subapp, loader=jinja2.DictLoader(
+        {'tmpl.jinja2':
+         'foo: {{ foo }}, bar: {{ bar }}, '
+         'baz: {{ baz }}, path: {{ request.path }}'}))
+
+    async def subprocessor(request):
+        return {'foo': 1,
+                'bar': 'should be overwriten'}
+
+    subapp['aiohttp_jinja2_context_processors'] = (
+        aiohttp_jinja2.request_processor,
+        subprocessor,
+    )
+
+    subapp.router.add_get('/', func)
+
+    app = web.Application(middlewares=[
+            aiohttp_jinja2.context_processors_middleware])
+    aiohttp_jinja2.setup(app, loader=jinja2.DictLoader({}))
+
+    async def processor(request):
+        return {'baz': 5}
+
+    app['aiohttp_jinja2_context_processors'] = (
+        aiohttp_jinja2.request_processor,
+        processor,
+    )
+
+    app.add_subapp('/sub/', subapp)
+
+    client = await aiohttp_client(app)
+
+    resp = await client.get('/sub/')
+    assert 200 == resp.status
+    txt = await resp.text()
+    assert 'foo: 1, bar: 2, baz: 5, path: /sub/' == txt
+
+
+async def test_context_is_response(aiohttp_client):
+
+    @aiohttp_jinja2.template('tmpl.jinja2')
+    async def func(request):
+        raise web.HTTPForbidden()
+
+    app = web.Application()
+    aiohttp_jinja2.setup(app, loader=jinja2.DictLoader(
+        {'tmpl.jinja2': "template"}))
+
+    app.router.add_route('GET', '/', func)
+    client = await aiohttp_client(app)
+
+    resp = await client.get('/')
+    assert 403 == resp.status
+
+
+async def test_context_processors_new_setup_style(aiohttp_client):
+
+    @aiohttp_jinja2.template('tmpl.jinja2')
+    async def func(request):
+        return {'bar': 2}
+
+    async def processor(request):
+        return {'foo': 1,
+                'bar': 'should be overwriten'}
+
+    app = web.Application()
     aiohttp_jinja2.setup(
         app,
-        loader=jinja2.DictLoader({
-            'tmpl.jinja2': template
-        }),
-        context_processors=(aiohttp_jinja2.request_processor, ctx_coro),
-        enable_async=True,
+        loader=jinja2.DictLoader(
+            {'tmpl.jinja2':
+             'foo: {{ foo }}, bar: {{ bar }}, '
+             'path: {{ request.path }}'}),
+        context_processors=(aiohttp_jinja2.request_processor,
+                            processor)
     )
 
     app.router.add_route('GET', '/', func)
-    client = yield from test_client(app)
+    client = await aiohttp_client(app)
 
-    resp = yield from client.get('/')
+    resp = await client.get('/')
     assert 200 == resp.status
-    txt = yield from resp.text()
+    txt = await resp.text()
     assert 'foo: 1, bar: 2, path: /' == txt
 
 
-@asyncio.coroutine
-def test_context_not_tainted(test_client, loop):
+async def test_context_not_tainted(aiohttp_client):
 
     global_context = {'version': 1}
 
     @aiohttp_jinja2.template('tmpl.jinja2')
-    @asyncio.coroutine
-    def func(request):
+    async def func(request):
         return global_context
 
-    app = web.Application(loop=loop)
-    ctx_coro = asyncio.coroutine(lambda request: {'foo': 1})
+    async def processor(request):
+        return {'foo': 1}
+
+    app = web.Application()
     aiohttp_jinja2.setup(
         app,
         loader=jinja2.DictLoader({'tmpl.jinja2': 'foo: {{ foo }}'}),
-        context_processors=[ctx_coro],
-        enable_async=True,
-    )
+        context_processors=[processor])
 
     app.router.add_get('/', func)
-    client = yield from test_client(app)
+    client = await aiohttp_client(app)
 
-    resp = yield from client.get('/')
+    resp = await client.get('/')
     assert 200 == resp.status
-    txt = yield from resp.text()
+    txt = await resp.text()
     assert 'foo: 1' == txt
 
     assert 'foo' not in global_context
