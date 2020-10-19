@@ -116,8 +116,9 @@ def template(
         status: int = 200
 ) -> Any:
     def wrapper(func: Any) -> Any:
+        @asyncio.coroutine
         @functools.wraps(func)
-        async def wrapped(*args: Any) -> web.StreamResponse:
+        def wrapped(*args: Any) -> web.StreamResponse:
             if asyncio.iscoroutinefunction(func):
                 coro = func
             else:
