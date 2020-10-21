@@ -50,6 +50,7 @@ def get_env(
     return cast(jinja2.Environment, app.get(app_key))
 
 
+@asyncio.coroutine
 def render_string(
         template_name: str,
         request: web.Request,
